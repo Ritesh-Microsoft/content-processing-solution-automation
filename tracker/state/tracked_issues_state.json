@@ -2,31 +2,31 @@
   "microsoft/customer-chatbot-solution-accelerator": {
     "seen_issues": [],
     "issue_details": {},
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/Modernize-your-code-solution-accelerator": {
     "seen_issues": [],
     "issue_details": {},
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/Container-Migration-Solution-Accelerator": {
     "seen_issues": [],
     "issue_details": {},
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/content-generation-solution-accelerator": {
     "seen_issues": [],
     "issue_details": {},
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/content-processing-solution-accelerator": {
     "seen_issues": [],
     "issue_details": {},
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "Azure-Samples/chat-with-your-data-solution-accelerator": {
@@ -155,32 +155,19 @@
         "ado_bug_url": null
       }
     },
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/Data-and-Agent-Governance-and-Security-Accelerator": {
-    "seen_issues": [
-      37
-    ],
-    "issue_details": {
-      "37": {
-        "title": "[Auto] AI Gallery Standard Validation",
-        "html_url": "https://github.com/microsoft/Data-and-Agent-Governance-and-Security-Accelerator/issues/37",
-        "created_at": "2026-04-09T23:57:51Z",
-        "user": "ai-apps-bot",
-        "first_seen": "2026-04-14T08:29:26.806587+00:00",
-        "followup_found": false,
-        "ado_bug_id": null,
-        "ado_bug_url": null
-      }
-    },
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "seen_issues": [],
+    "issue_details": {},
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/Deploy-Your-AI-Application-In-Production": {
     "seen_issues": [],
     "issue_details": {},
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/Document-Knowledge-Mining-Solution-Accelerator": {
@@ -210,25 +197,25 @@
         "ado_bug_url": null
       }
     },
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/agentic-applications-for-unified-data-foundation-solution-accelerator": {
     "seen_issues": [],
     "issue_details": {},
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/Conversation-Knowledge-Mining-Solution-Accelerator": {
     "seen_issues": [],
     "issue_details": {},
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/unified-data-foundation-with-fabric-solution-accelerator": {
     "seen_issues": [],
     "issue_details": {},
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/Multi-Agent-Custom-Automation-Engine-Solution-Accelerator": {
@@ -291,13 +278,13 @@
         "ado_bug_url": null
       }
     },
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   },
   "microsoft/real-time-intelligence-operations-solution-accelerator": {
     "seen_issues": [],
     "issue_details": {},
-    "last_checked": "2026-04-14T14:04:17.317271+00:00",
+    "last_checked": "2026-04-14T15:48:06.370242+00:00",
     "last_new_count": 0
   }
 }
