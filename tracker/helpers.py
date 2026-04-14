@@ -19,8 +19,14 @@ from urllib.parse import quote as urlquote
 
 import jwt  # PyJWT — for GitHub App JWT signing
 import requests
-from azure.storage.blob import BlobServiceClient, ContentSettings
-from azure.identity import DefaultAzureCredential
+
+# Azure SDK imports — optional (only needed for Azure Functions, not GitHub Actions)
+try:
+    from azure.storage.blob import BlobServiceClient, ContentSettings
+    from azure.identity import DefaultAzureCredential
+    _HAS_AZURE_SDK = True
+except ImportError:
+    _HAS_AZURE_SDK = False
 
 log = logging.getLogger(__name__)
 
@@ -106,6 +112,8 @@ from pathlib import Path
 
 
 def _blob_client():
+    if not _HAS_AZURE_SDK:
+        raise RuntimeError("azure-storage-blob not installed — set STATE_FILE for file-based state")
     conn_str  = env("AzureWebJobsStorage")
     container = env("STATE_CONTAINER", "tracker-state")
     blob_name = env("STATE_BLOB", "tracked_issues_state.json")
@@ -376,6 +384,12 @@ def _ado_auth():
         return "Basic " + base64.b64encode(f":{pat}".encode()).decode()
 
     # Option 3: Managed Identity (Azure Functions deployment)
+    if not _HAS_AZURE_SDK:
+        raise EnvironmentError(
+            "ADO auth failed — no AZURE_ADO_TOKEN, no ADO_PAT, "
+            "and azure-identity not installed for Managed Identity"
+        )
+
     now = time.time()
     with _ado_token_cache["lock"]:
         if _ado_token_cache["header"] and now < _ado_token_cache["expires"] - 120:
