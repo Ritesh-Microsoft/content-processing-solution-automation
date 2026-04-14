@@ -59,9 +59,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git stash --include-untracked || true
           git pull --rebase origin main || true
+          git stash pop || true
           git add tracker/state/tracked_issues_state.json
           if ! git diff --cached --quiet; then
             git commit -m "chore: update tracker state [skip ci]"
             git push
           fi
+
