@@ -14,7 +14,7 @@ import base64
 import re
 import time
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from urllib.parse import quote as urlquote
 
 import jwt  # PyJWT — for GitHub App JWT signing
@@ -766,7 +766,8 @@ def followup_teams(accel, repo_url, overdue, primary, secondary):
 
 
 def summary_email(total_new, total_ado, total_overdue, errors):
-    ts = datetime.now().strftime("%d-%b-%Y %I:%M %p")
+    IST = timezone(timedelta(hours=5, minutes=30))
+    ts = datetime.now(IST).strftime("%d-%b-%Y %I:%M %p IST")
     icon = "OK" if errors == 0 else "WARN"
     subj = f"[{icon}] Issue Tracker Run \u2014 {total_new} new, {total_overdue} overdue, {errors} errors \u2014 {ts}"
     body = (
