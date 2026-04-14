@@ -563,52 +563,77 @@ def create_ado_bug(issue, accel, repo_url, primary_email, iteration_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MICROSOFT GRAPH API — Email + Teams
+# EMAIL + TEAMS VIA POWER AUTOMATE WEBHOOKS  (No admin consent needed!)
 # ═══════════════════════════════════════════════════════════════════════════════
-
-_graph_cache = {"token": None, "expires": 0}
-
-
-def _graph_token():
-    now = time.time()
-    if _graph_cache["token"] and now < _graph_cache["expires"] - 60:
-        return _graph_cache["token"]
-
-    r = requests.post(
-        f"https://login.microsoftonline.com/{env('GRAPH_TENANT_ID')}/oauth2/v2.0/token",
-        data={
-            "grant_type": "client_credentials",
-            "client_id": env("GRAPH_CLIENT_ID"),
-            "client_secret": env("GRAPH_CLIENT_SECRET"),
-            "scope": "https://graph.microsoft.com/.default",
-        },
-        timeout=15,
-    )
-    r.raise_for_status()
-    data = r.json()
-    _graph_cache["token"]   = data["access_token"]
-    _graph_cache["expires"] = now + data.get("expires_in", 3600)
-    return data["access_token"]
+#
+# How it works:
+#   1. Create 2 Power Automate flows with "When an HTTP request is received" trigger
+#   2. Flow 1: receives JSON → sends email via Office 365 Outlook connector
+#   3. Flow 2: receives JSON → posts Teams message via Teams connector
+#   4. Store the webhook URLs as env vars / GitHub secrets
+#   5. Python just POSTs JSON to the webhook URLs — done!
+#
+# Setup:
+#   Go to https://make.powerautomate.com → Create → Instant cloud flow
+#
+#   FLOW 1 — "Send Email Webhook":
+#     Trigger:  "When an HTTP request is received"
+#               Request Body JSON Schema:
+#               {
+#                 "type": "object",
+#                 "properties": {
+#                   "to":      { "type": "string" },
+#                   "cc":      { "type": "string" },
+#                   "subject": { "type": "string" },
+#                   "body":    { "type": "string" }
+#                 }
+#               }
+#     Action:   "Send an email (V2)" — Office 365 Outlook
+#               To: @{triggerBody()?['to']}
+#               CC: @{triggerBody()?['cc']}
+#               Subject: @{triggerBody()?['subject']}
+#               Body: @{triggerBody()?['body']}
+#               Importance: High
+#     → Save → Copy the HTTP POST URL
+#
+#   FLOW 2 — "Teams Message Webhook":
+#     Trigger:  "When an HTTP request is received"
+#               Request Body JSON Schema:
+#               {
+#                 "type": "object",
+#                 "properties": {
+#                   "chatId":  { "type": "string" },
+#                   "message": { "type": "string" }
+#                 }
+#               }
+#     Action:   "Post message in a chat or channel" — Microsoft Teams
+#               Post in: Group chat
+#               Group chat: (select your chat, or use chatId from trigger)
+#               Message: @{triggerBody()?['message']}
+#     → Save → Copy the HTTP POST URL
+#
+# Required env vars:
+#   POWER_AUTOMATE_EMAIL_URL  — webhook URL from Flow 1
+#   POWER_AUTOMATE_TEAMS_URL  — webhook URL from Flow 2
 
 
 def send_email(to_list, cc_list, subject, html_body):
+    """Send email via Power Automate webhook."""
+    webhook_url = os.environ.get("POWER_AUTOMATE_EMAIL_URL", "")
+    if not webhook_url:
+        log.warning("  Email skipped — POWER_AUTOMATE_EMAIL_URL not set")
+        return False
+
     try:
-        sender = env("SENDER_EMAIL")
-        r = requests.post(
-            f"https://graph.microsoft.com/v1.0/users/{sender}/sendMail",
-            headers={"Authorization": f"Bearer {_graph_token()}",
-                     "Content-Type": "application/json"},
-            json={"message": {
-                "subject": subject,
-                "body": {"contentType": "HTML", "content": html_body},
-                "toRecipients": [{"emailAddress": {"address": e}} for e in to_list if e],
-                "ccRecipients": [{"emailAddress": {"address": e}} for e in cc_list if e],
-                "importance": "high",
-            }},
-            timeout=30,
-        )
+        payload = {
+            "to": "; ".join(e for e in to_list if e),
+            "cc": "; ".join(e for e in cc_list if e),
+            "subject": subject,
+            "body": html_body,
+        }
+        r = requests.post(webhook_url, json=payload, timeout=30)
         r.raise_for_status()
-        log.info(f"  Email sent -> {to_list}")
+        log.info(f"  Email sent via Power Automate -> {to_list}")
         return True
     except Exception as e:
         log.error(f"  Email failed: {e}")
@@ -616,17 +641,21 @@ def send_email(to_list, cc_list, subject, html_body):
 
 
 def send_teams_message(html_content):
+    """Post Teams message via Power Automate webhook."""
+    webhook_url = os.environ.get("POWER_AUTOMATE_TEAMS_URL", "")
+    if not webhook_url:
+        log.warning("  Teams skipped — POWER_AUTOMATE_TEAMS_URL not set")
+        return False
+
     try:
-        chat_id = env("TEAMS_CHAT_ID")
-        r = requests.post(
-            f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages",
-            headers={"Authorization": f"Bearer {_graph_token()}",
-                     "Content-Type": "application/json"},
-            json={"body": {"contentType": "html", "content": html_content}},
-            timeout=30,
-        )
+        chat_id = os.environ.get("TEAMS_CHAT_ID", "")
+        payload = {
+            "chatId": chat_id,
+            "message": html_content,
+        }
+        r = requests.post(webhook_url, json=payload, timeout=30)
         r.raise_for_status()
-        log.info("  Teams message sent")
+        log.info("  Teams message sent via Power Automate")
         return True
     except Exception as e:
         log.error(f"  Teams failed: {e}")

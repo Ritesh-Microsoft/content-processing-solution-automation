@@ -11,7 +11,6 @@ concurrency:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   track-issues:
@@ -35,23 +34,22 @@ jobs:
       - name: Run Issue Tracker
         working-directory: tracker
         env:
-          # GitHub: built-in token (auto-provided, reads public repos)
+          # GitHub: built-in token (reads public repos)
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          # ADO: PAT (stored as secret)
+          # ADO: PAT
           ADO_PAT: ${{ secrets.ADO_PAT }}
           ADO_ORG: CSACTOSOL
           ADO_PROJECT: CSA Solutioning
           ADO_AREA_PATH: "CSA Solutioning\\Engineering - Tech Debt - Maintenance"
           ADO_PARENT_US_ID: "36885"
 
-          # Graph API: app credentials
-          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
-          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
-          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
+          # Email + Teams: Power Automate webhooks (no admin consent!)
+          POWER_AUTOMATE_EMAIL_URL: ${{ secrets.POWER_AUTOMATE_EMAIL_URL }}
+          POWER_AUTOMATE_TEAMS_URL: ${{ secrets.POWER_AUTOMATE_TEAMS_URL }}
+          TEAMS_CHAT_ID: ${{ vars.TEAMS_CHAT_ID }}
           SENDER_EMAIL: ${{ vars.SENDER_EMAIL }}
           CC_EMAILS: ${{ vars.CC_EMAILS }}
-          TEAMS_CHAT_ID: ${{ vars.TEAMS_CHAT_ID }}
 
           # State: file-based (committed back to repo)
           STATE_FILE: ${{ github.workspace }}/tracker/state/tracked_issues_state.json
