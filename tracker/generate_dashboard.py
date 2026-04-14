@@ -1,669 +1,480 @@
-#!/usr/bin/env python3
 """
-Generate a self-contained HTML dashboard for GitHub Issue Tracking.
-
-Usage:
-    python generate_dashboard.py
-
-Environment variables:
-    GITHUB_TOKEN   – GitHub PAT or app token (optional but recommended)
-    STATE_FILE     – Path to tracked_issues_state.json
-    OUTPUT_HTML    – Where to write the dashboard (default: dashboard.html in same dir)
+GitHub Issue Tracker Dashboard — Cloud Edition
+Generates the same dashboard as the local version, using GitHub REST API instead of gh CLI.
 """
 
 import json
 import os
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 import requests
 
-# ─── configuration ────────────────────────────────────────────────────────────
-
 IST = timezone(timedelta(hours=5, minutes=30))
 
+SCRIPT_DIR = Path(__file__).parent
+STATE_FILE = Path(os.environ.get("STATE_FILE", SCRIPT_DIR / "state" / "tracked_issues_state.json"))
+OUTPUT_HTML = Path(os.environ.get("OUTPUT_HTML", SCRIPT_DIR / "dashboard.html"))
+
 REPOS = [
-    {"name": "Customer Chatbot", "owner": "microsoft", "repo": "customer-chatbot-solution-accelerator", "primary": "Ajit Padhi", "secondary": "Prajwal D C"},
-    {"name": "Code Modernization", "owner": "microsoft", "repo": "Modernize-your-code-solution-accelerator", "primary": "Priyanka Singhal", "secondary": "Shreyas Waikar"},
-    {"name": "Container Migration", "owner": "microsoft", "repo": "Container-Migration-Solution-Accelerator", "primary": "Shreyas Waikar", "secondary": "Priyanka Singhal"},
-    {"name": "Content Generation", "owner": "microsoft", "repo": "content-generation-solution-accelerator", "primary": "Ragini Chauragade", "secondary": "Pavan Kumar"},
-    {"name": "Content Processing", "owner": "microsoft", "repo": "content-processing-solution-accelerator", "primary": "Shreyas Waikar", "secondary": "Ajit Padhi"},
-    {"name": "CWYD", "owner": "Azure-Samples", "repo": "chat-with-your-data-solution-accelerator", "primary": "Ajit Padhi", "secondary": "Priyanka Singhal"},
-    {"name": "Data & Agent Governance", "owner": "microsoft", "repo": "Data-and-Agent-Governance-and-Security-Accelerator", "primary": "Saswato Chatterjee", "secondary": "Yamini"},
-    {"name": "Deploy AI App", "owner": "microsoft", "repo": "Deploy-Your-AI-Application-In-Production", "primary": "Saswato Chatterjee", "secondary": "Yamini"},
-    {"name": "DKM", "owner": "microsoft", "repo": "Document-Knowledge-Mining-Solution-Accelerator", "primary": "Priyanka Singhal", "secondary": "Ajit Padhi"},
-    {"name": "Agentic App", "owner": "microsoft", "repo": "agentic-applications-for-unified-data-foundation-solution-accelerator", "primary": "Ragini Chauragade", "secondary": "Pavan Kumar"},
-    {"name": "KM Generic", "owner": "microsoft", "repo": "Conversation-Knowledge-Mining-Solution-Accelerator", "primary": "Pavan Kumar", "secondary": "Avijit Ghorui"},
-    {"name": "UDF", "owner": "microsoft", "repo": "unified-data-foundation-with-fabric-solution-accelerator", "primary": "Saswato Chatterjee", "secondary": "Yamini"},
-    {"name": "MACAE", "owner": "microsoft", "repo": "Multi-Agent-Custom-Automation-Engine-Solution-Accelerator", "primary": "Dhruvkumar Babariya", "secondary": "Abdul Mujeeb T A"},
-    {"name": "RTI", "owner": "microsoft", "repo": "real-time-intelligence-operations-solution-accelerator", "primary": "Saswato Chatterjee", "secondary": "Yamini"},
+    {"name": "Customer Chatbot", "owner": "microsoft", "repo": "customer-chatbot-solution-accelerator",
+     "primary": "Ajit Padhi", "secondary": "Prajwal D C"},
+    {"name": "Code Modernization", "owner": "microsoft", "repo": "Modernize-your-code-solution-accelerator",
+     "primary": "Priyanka Singhal", "secondary": "Shreyas Waikar"},
+    {"name": "Container Migration", "owner": "microsoft", "repo": "Container-Migration-Solution-Accelerator",
+     "primary": "Shreyas Waikar", "secondary": "Priyanka Singhal"},
+    {"name": "Content Generation", "owner": "microsoft", "repo": "content-generation-solution-accelerator",
+     "primary": "Ragini Chauragade", "secondary": "Pavan Kumar"},
+    {"name": "Content Processing", "owner": "microsoft", "repo": "content-processing-solution-accelerator",
+     "primary": "Shreyas Waikar", "secondary": "Ajit Padhi"},
+    {"name": "CWYD", "owner": "Azure-Samples", "repo": "chat-with-your-data-solution-accelerator",
+     "primary": "Ajit Padhi", "secondary": "Priyanka Singhal"},
+    {"name": "Data & Agent Governance", "owner": "microsoft", "repo": "Data-and-Agent-Governance-and-Security-Accelerator",
+     "primary": "Saswato Chatterjee", "secondary": "Yamini"},
+    {"name": "Deploy AI App", "owner": "microsoft", "repo": "Deploy-Your-AI-Application-In-Production",
+     "primary": "Saswato Chatterjee", "secondary": "Yamini"},
+    {"name": "DKM", "owner": "microsoft", "repo": "Document-Knowledge-Mining-Solution-Accelerator",
+     "primary": "Priyanka Singhal", "secondary": "Ajit Padhi"},
+    {"name": "Agentic App", "owner": "microsoft", "repo": "agentic-applications-for-unified-data-foundation-solution-accelerator",
+     "primary": "Ragini Chauragade", "secondary": "Pavan Kumar"},
+    {"name": "KM Generic", "owner": "microsoft", "repo": "Conversation-Knowledge-Mining-Solution-Accelerator",
+     "primary": "Pavan Kumar", "secondary": "Avijit Ghorui"},
+    {"name": "UDF", "owner": "microsoft", "repo": "unified-data-foundation-with-fabric-solution-accelerator",
+     "primary": "Saswato Chatterjee", "secondary": "Yamini"},
+    {"name": "MACAE", "owner": "microsoft", "repo": "Multi-Agent-Custom-Automation-Engine-Solution-Accelerator",
+     "primary": "Dhruvkumar Babariya", "secondary": "Abdul Mujeeb T A"},
+    {"name": "RTI", "owner": "microsoft", "repo": "real-time-intelligence-operations-solution-accelerator",
+     "primary": "Saswato Chatterjee", "secondary": "Yamini"},
 ]
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-STATE_FILE = os.environ.get("STATE_FILE", os.path.join(SCRIPT_DIR, "..", "tracked_issues_state.json"))
-OUTPUT_HTML = os.environ.get("OUTPUT_HTML", os.path.join(SCRIPT_DIR, "dashboard.html"))
-
-# ─── github helpers ───────────────────────────────────────────────────────────
 
 def _gh_headers():
     token = os.environ.get("GITHUB_TOKEN", "")
-    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    h = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
     if token:
-        headers["Authorization"] = f"Bearer {token}"
-    return headers
+        h["Authorization"] = f"Bearer {token}"
+    return h
 
 
-def fetch_open_issues(owner: str, repo: str, retries: int = 3) -> list[dict]:
-    """Fetch all open issues (excluding PRs) with pagination and retry."""
-    all_issues: list[dict] = []
+def fetch_live_issues(owner, repo):
+    """Fetch open issues (not PRs) via GitHub REST API with pagination."""
+    issues = []
     page = 1
-    while True:
-        url = f"https://api.github.com/repos/{owner}/{repo}/issues"
-        params = {"state": "open", "per_page": 100, "page": page}
-        data = None
-        for attempt in range(1, retries + 1):
-            try:
-                resp = requests.get(url, headers=_gh_headers(), params=params, timeout=30)
-                if resp.status_code == 403 and "rate limit" in resp.text.lower():
-                    wait = 5 * attempt
-                    print(f"  ⚠ Rate-limited, waiting {wait}s (attempt {attempt}/{retries})…")
-                    time.sleep(wait)
-                    continue
-                resp.raise_for_status()
-                data = resp.json()
-                break
-            except (requests.RequestException, ValueError) as exc:
-                wait = 5 * attempt
-                print(f"  ⚠ Error fetching {owner}/{repo} page {page} (attempt {attempt}/{retries}): {exc}")
-                if attempt < retries:
-                    time.sleep(wait)
-                else:
-                    print(f"  ✗ Gave up on {owner}/{repo} page {page}")
-                    return all_issues
-        if data is None:
-            break
-        # filter out pull requests
-        issues = [i for i in data if "pull_request" not in i]
-        all_issues.extend(issues)
-        if len(data) < 100:
-            break
-        page += 1
-    return all_issues
-
-# ─── state file helpers ───────────────────────────────────────────────────────
-
-def load_state() -> dict:
-    path = STATE_FILE
-    if os.path.isfile(path):
+    for _ in range(20):  # safety limit
         try:
-            with open(path, encoding="utf-8") as fh:
-                return json.load(fh)
-        except (json.JSONDecodeError, OSError) as exc:
-            print(f"⚠ Could not read state file {path}: {exc}")
-    else:
-        print(f"ℹ State file not found at {path}; overdue data will be empty.")
+            r = requests.get(
+                f"https://api.github.com/repos/{owner}/{repo}/issues",
+                params={"state": "open", "per_page": 100, "page": page},
+                headers=_gh_headers(), timeout=30,
+            )
+            if r.status_code == 403:
+                print(f"  Rate limited, waiting...")
+                time.sleep(10)
+                continue
+            r.raise_for_status()
+            batch = r.json()
+            if not batch:
+                break
+            for item in batch:
+                if item.get("pull_request") is None:
+                    issues.append({
+                        "number": item["number"],
+                        "title": item["title"],
+                        "html_url": item["html_url"],
+                        "created_at": item["created_at"],
+                        "user": item["user"]["login"],
+                        "labels": [l["name"] for l in item.get("labels", [])],
+                    })
+            if len(batch) < 100:
+                break
+            page += 1
+        except Exception as e:
+            print(f"  Error: {e}")
+            return issues
+    return issues
+
+
+def load_state():
+    if STATE_FILE.exists():
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
     return {}
 
 
-def count_overdue(state: dict, owner: str, repo: str) -> int:
-    """Count issues where followup_found=False and age >= 2 days."""
+def generate_dashboard():
+    print("Generating GitHub Issue Tracker Dashboard...")
+    state = load_state()
     now = datetime.now(timezone.utc)
-    key = f"{owner}/{repo}"
-    repo_state = state.get(key, {})
-    details = repo_state.get("issue_details", {})
-    overdue = 0
-    for _num, det in details.items():
-        if det.get("followup_found", False):
-            continue
-        first_seen_str = det.get("first_seen", "")
-        if not first_seen_str:
-            continue
-        try:
-            first_seen = datetime.fromisoformat(first_seen_str)
-            if first_seen.tzinfo is None:
-                first_seen = first_seen.replace(tzinfo=timezone.utc)
-            if (now - first_seen).total_seconds() >= 2 * 86400:
-                overdue += 1
-        except ValueError:
-            pass
-    return overdue
+    generated_at = datetime.now(IST).strftime("%d-%b-%Y %I:%M %p IST")
 
-# ─── data aggregation ─────────────────────────────────────────────────────────
-
-def _classify_issue(issue: dict) -> str:
-    labels = [lbl["name"].lower() for lbl in issue.get("labels", [])]
-    if "bug" in labels:
-        return "bug"
-    if "enhancement" in labels:
-        return "enhancement"
-    return "other"
-
-
-def _age_days(created_at: str) -> int:
-    created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-    return (datetime.now(timezone.utc) - created).days
-
-
-def aggregate(repos_data: list[dict], state: dict) -> dict:
-    """Build all aggregate structures for the dashboard."""
-    total_issues = 0
-    total_bugs = 0
-    total_enhancements = 0
-    total_other = 0
+    repo_data = []
+    total_open = 0
     total_overdue = 0
+    total_bug = 0
+    total_enhancement = 0
+    total_other = 0
+    all_issues = []
 
-    repo_summaries: list[dict] = []
-    owner_counts: dict[str, int] = {}
-    all_issues_flat: list[dict] = []
+    for repo_cfg in REPOS:
+        owner = repo_cfg["owner"]
+        repo = repo_cfg["repo"]
+        name = repo_cfg["name"]
+        repo_key = f"{owner}/{repo}"
+        repo_url = f"https://github.com/{repo_key}"
 
-    for entry in repos_data:
-        cfg = entry["config"]
-        issues = entry["issues"]
-        n_bugs = sum(1 for i in issues if _classify_issue(i) == "bug")
-        n_enh = sum(1 for i in issues if _classify_issue(i) == "enhancement")
-        n_other = len(issues) - n_bugs - n_enh
-        overdue = count_overdue(state, cfg["owner"], cfg["repo"])
+        print(f"  Fetching: {name}...")
+        issues = fetch_live_issues(owner, repo)
+        if issues is None:
+            issues = []
 
-        oldest_age = max((_age_days(i["created_at"]) for i in issues), default=0)
+        repo_state = state.get(repo_key, {})
+        issue_details = repo_state.get("issue_details", {})
+        last_checked = repo_state.get("last_checked", "N/A")
 
-        total_issues += len(issues)
-        total_bugs += n_bugs
-        total_enhancements += n_enh
-        total_other += n_other
+        bugs = [i for i in issues if "bug" in [l.lower() for l in i.get("labels", [])]]
+        enhancements = [i for i in issues if "enhancement" in [l.lower() for l in i.get("labels", [])]]
+        others = [i for i in issues if i not in bugs and i not in enhancements]
+
+        overdue = 0
+        for num_str, det in issue_details.items():
+            if not det.get("followup_found", False):
+                first_seen = datetime.fromisoformat(det["first_seen"])
+                if (now - first_seen).days >= 2:
+                    overdue += 1
+
+        oldest_days = 0
+        if issues:
+            oldest_created = min(i["created_at"] for i in issues)
+            try:
+                oldest_dt = datetime.fromisoformat(oldest_created.replace("Z", "+00:00"))
+                oldest_days = (now - oldest_dt).days
+            except Exception:
+                pass
+
+        total_open += len(issues)
         total_overdue += overdue
+        total_bug += len(bugs)
+        total_enhancement += len(enhancements)
+        total_other += len(others)
 
-        repo_summaries.append({
-            "name": cfg["name"],
-            "owner": cfg["owner"],
-            "repo": cfg["repo"],
-            "open": len(issues),
-            "bugs": n_bugs,
-            "enhancements": n_enh,
-            "other": n_other,
+        for i in issues:
+            i["_accel"] = name
+            i["_repo_url"] = repo_url
+            age = 0
+            try:
+                age = (now - datetime.fromisoformat(i["created_at"].replace("Z", "+00:00"))).days
+            except Exception:
+                pass
+            i["_age_days"] = age
+        all_issues.extend(issues)
+
+        repo_data.append({
+            "name": name,
+            "repo_key": repo_key,
+            "repo_url": repo_url,
+            "primary": repo_cfg["primary"],
+            "secondary": repo_cfg["secondary"],
+            "open_count": len(issues),
+            "bug_count": len(bugs),
+            "enhancement_count": len(enhancements),
+            "other_count": len(others),
             "overdue": overdue,
-            "oldest_age": oldest_age,
-            "primary": cfg["primary"],
-            "secondary": cfg["secondary"],
+            "oldest_days": oldest_days,
+            "last_checked": last_checked[:19] if last_checked != "N/A" else "N/A",
         })
 
-        owner_counts[cfg["primary"]] = owner_counts.get(cfg["primary"], 0) + len(issues)
+    all_issues.sort(key=lambda i: i.get("_age_days", 0), reverse=True)
 
-        for iss in issues:
-            all_issues_flat.append({
-                "number": iss["number"],
-                "html_url": iss["html_url"],
-                "title": iss["title"],
-                "user": iss.get("user", {}).get("login", "unknown"),
-                "labels": iss.get("labels", []),
-                "created_at": iss["created_at"],
-                "age": _age_days(iss["created_at"]),
-                "kind": _classify_issue(iss),
-                "accelerator": cfg["name"],
-                "repo_owner": cfg["owner"],
-                "repo_name": cfg["repo"],
-            })
+    html = _build_html(repo_data, all_issues, total_open, total_overdue,
+                       total_bug, total_enhancement, total_other, generated_at)
 
-    all_issues_flat.sort(key=lambda x: x["age"], reverse=True)
-
-    return {
-        "total_issues": total_issues,
-        "total_bugs": total_bugs,
-        "total_enhancements": total_enhancements,
-        "total_other": total_other,
-        "total_overdue": total_overdue,
-        "repo_summaries": repo_summaries,
-        "owner_counts": owner_counts,
-        "all_issues": all_issues_flat[:50],
-    }
-
-# ─── HTML generation ──────────────────────────────────────────────────────────
-
-def _label_badge(label: dict) -> str:
-    name = label.get("name", "")
-    color = label.get("color", "cccccc")
-    # determine text colour from background brightness
-    try:
-        r, g, b = int(color[:2], 16), int(color[2:4], 16), int(color[4:6], 16)
-        text_color = "#fff" if (r * 0.299 + g * 0.587 + b * 0.114) < 160 else "#000"
-    except (ValueError, IndexError):
-        text_color = "#000"
-        color = "cccccc"
-    from html import escape
-    return (
-        f'<span style="background:#{color};color:{text_color};padding:2px 8px;'
-        f'border-radius:12px;font-size:0.75rem;margin-right:3px;white-space:nowrap">'
-        f'{escape(name)}</span>'
-    )
+    OUTPUT_HTML.parent.mkdir(parents=True, exist_ok=True)
+    with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"\nDashboard generated: {OUTPUT_HTML}")
+    print(f"  Total: {total_open} open | {total_bug} bugs | {total_enhancement} enh | {total_overdue} overdue")
 
 
-def _kind_badge(kind: str) -> str:
-    colors = {"bug": "#d32f2f", "enhancement": "#2e7d32", "other": "#757575"}
-    bg = colors.get(kind, "#757575")
-    from html import escape
-    return (
-        f'<span style="background:{bg};color:#fff;padding:2px 8px;'
-        f'border-radius:12px;font-size:0.75rem">{escape(kind.title())}</span>'
-    )
-
-
-def _age_badge(days: int) -> str:
-    if days > 7:
-        bg = "#d32f2f"
-    elif days > 2:
-        bg = "#f9a825"
-    else:
-        bg = "#2e7d32"
-    return (
-        f'<span style="background:{bg};color:#fff;padding:2px 8px;'
-        f'border-radius:12px;font-size:0.75rem">{days}d</span>'
-    )
-
-
-def generate_html(agg: dict) -> str:
-    now_ist = datetime.now(IST).strftime("%d %b %Y, %I:%M %p IST")
-    repo_count = len(REPOS)
-
-    # chart data
-    repo_names_js = json.dumps([r["name"] for r in agg["repo_summaries"]])
-    bugs_js = json.dumps([r["bugs"] for r in agg["repo_summaries"]])
-    enh_js = json.dumps([r["enhancements"] for r in agg["repo_summaries"]])
-    other_js = json.dumps([r["other"] for r in agg["repo_summaries"]])
-
-    # repo summary rows
+def _build_html(repo_data, all_issues, total_open, total_overdue,
+                total_bug, total_enhancement, total_other, generated_at):
+    # Build repo rows
     repo_rows = ""
-    for r in agg["repo_summaries"]:
-        issues_url = f"https://github.com/{r['owner']}/{r['repo']}/issues"
-        open_badge = f'<span class="badge badge-blue">{r["open"]}</span>' if r["open"] > 0 else '<span class="badge badge-green">0</span>'
-        overdue_badge = (
-            f'<span class="badge badge-red">{r["overdue"]}</span>'
-            if r["overdue"] > 0
-            else '<span class="badge badge-green">0</span>'
-        )
-        oldest_cls = "badge badge-red" if r["oldest_age"] > 30 else ("badge badge-orange" if r["oldest_age"] > 7 else "badge badge-gray")
-        repo_rows += f"""<tr>
-  <td><a href="{issues_url}" target="_blank">{r["name"]}</a></td>
-  <td style="text-align:center">{open_badge}</td>
-  <td style="text-align:center">{r["bugs"]}</td>
-  <td style="text-align:center">{r["enhancements"]}</td>
-  <td style="text-align:center">{r["other"]}</td>
-  <td style="text-align:center">{overdue_badge}</td>
-  <td style="text-align:center"><span class="{oldest_cls}">{r["oldest_age"]}d</span></td>
-  <td>{r["primary"]}</td>
-  <td>{r["secondary"]}</td>
-</tr>\n"""
+    for r in repo_data:
+        overdue_badge = f'<span class="badge badge-red">{r["overdue"]}</span>' if r["overdue"] > 0 else '<span class="badge badge-green">0</span>'
+        open_badge = f'<span class="badge badge-blue">{r["open_count"]}</span>' if r["open_count"] > 0 else '<span class="badge badge-green">0</span>'
+        repo_rows += f"""
+        <tr>
+            <td><a href="{r['repo_url']}/issues" target="_blank">{r['name']}</a></td>
+            <td class="center">{open_badge}</td>
+            <td class="center">{r['bug_count']}</td>
+            <td class="center">{r['enhancement_count']}</td>
+            <td class="center">{r['other_count']}</td>
+            <td class="center">{overdue_badge}</td>
+            <td class="center">{r['oldest_days']}d</td>
+            <td>{r['primary']}</td>
+            <td>{r['secondary']}</td>
+        </tr>"""
 
-    # owner workload rows
-    max_owner_count = max(agg["owner_counts"].values()) if agg["owner_counts"] else 1
-    owner_rows = ""
-    for owner_name, cnt in sorted(agg["owner_counts"].items(), key=lambda x: x[1], reverse=True):
-        bar_pct = int(cnt / max_owner_count * 100) if max_owner_count else 0
-        owner_rows += f"""<tr>
-  <td style="font-weight:600">{owner_name}</td>
-  <td style="text-align:center"><span class="badge badge-blue">{cnt}</span></td>
-  <td><div class="bar-track"><div class="bar-fill" style="width:{max(bar_pct, 8)}%">{cnt}</div></div></td>
-</tr>\n"""
-
-    # all issues rows
-    from html import escape as html_escape
+    # Build all issues rows (top 50)
     issue_rows = ""
-    for iss in agg["all_issues"]:
-        title_trunc = iss["title"][:80] + ("…" if len(iss["title"]) > 80 else "")
-        labels_html = " ".join(_label_badge(lbl) for lbl in iss["labels"]) if iss["labels"] else _kind_badge(iss["kind"])
-        issue_rows += f"""<tr>
-  <td><a href="{iss["html_url"]}" target="_blank" style="color:#0078D4;text-decoration:none">#{iss["number"]}</a></td>
-  <td>{html_escape(iss["accelerator"])}</td>
-  <td title="{html_escape(iss["title"])}">{html_escape(title_trunc)}</td>
-  <td>{html_escape(iss["user"])}</td>
-  <td>{labels_html}</td>
-  <td style="text-align:center">{_age_badge(iss["age"])}</td>
-</tr>\n"""
+    for i in all_issues[:50]:
+        labels = ", ".join(i.get("labels", [])) or "\u2014"
+        label_class = "label-bug" if "bug" in labels.lower() else ("label-enhancement" if "enhancement" in labels.lower() else "label-other")
+        age_class = "age-red" if i["_age_days"] > 7 else ("age-yellow" if i["_age_days"] > 2 else "age-green")
+        issue_rows += f"""
+        <tr>
+            <td><a href="{i['html_url']}" target="_blank">#{i['number']}</a></td>
+            <td>{i['_accel']}</td>
+            <td class="title-col">{i['title'][:80]}</td>
+            <td>{i.get('user', 'N/A')}</td>
+            <td><span class="{label_class}">{labels}</span></td>
+            <td class="center {age_class}">{i['_age_days']}d</td>
+        </tr>"""
 
-    html = f"""<!DOCTYPE html>
+    # Owner workload
+    owner_counts = {}
+    for r in repo_data:
+        p = r["primary"]
+        owner_counts[p] = owner_counts.get(p, 0) + r["open_count"]
+
+    owner_rows = ""
+    for owner, count in sorted(owner_counts.items(), key=lambda x: -x[1]):
+        bar_width = min(count * 15, 300)
+        owner_rows += f"""
+        <tr>
+            <td>{owner}</td>
+            <td class="center">{count}</td>
+            <td><div class="bar" style="width:{bar_width}px"></div></td>
+        </tr>"""
+
+    # Chart data for JS
+    repo_names_js = json.dumps([r["name"] for r in repo_data])
+    bugs_js = json.dumps([r["bug_count"] for r in repo_data])
+    enhancements_js = json.dumps([r["enhancement_count"] for r in repo_data])
+    others_js = json.dumps([r["other_count"] for r in repo_data])
+
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GitHub Issue Tracker Dashboard — CSA Solutioning</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<title>GitHub Issue Tracker Dashboard</title>
 <style>
-  :root {{{{
-    --blue: #0078D4; --blue-dark: #005a9e; --blue-light: #e8f4fd;
-    --red: #D83B01; --red-bg: #FDE7E9;
-    --green: #107C10; --green-bg: #DFF6DD;
-    --orange: #FF8C00; --orange-bg: #FFF4CE;
-    --purple: #8661C5; --purple-bg: #F3EFFC;
-    --gray: #6B7280; --gray-bg: #F3F4F6;
-    --bg: #F0F2F5; --card: #FFFFFF;
-    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
-    --shadow-hover: 0 4px 16px rgba(0,0,0,0.12);
-    --radius: 12px;
-  }}}}
-  * {{{{ box-sizing: border-box; margin: 0; padding: 0; }}}}
-  body {{{{ font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: #1F2937; line-height: 1.5; }}}}
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; color: #333; }}
+    .header {{ background: linear-gradient(135deg, #0078D4, #005a9e); color: white; padding: 20px 30px; }}
+    .header h1 {{ font-size: 24px; font-weight: 600; }}
+    .header .subtitle {{ font-size: 13px; opacity: 0.8; margin-top: 4px; }}
+    .container {{ max-width: 1400px; margin: 0 auto; padding: 20px; }}
 
-  /* ── Header ── */
-  .header {{{{
-    background: linear-gradient(135deg, #0078D4 0%, #005a9e 50%, #003d73 100%);
-    color: white; padding: 36px 32px 28px; position: relative; overflow: hidden;
-  }}}}
-  .header::before {{{{
-    content: ''; position: absolute; top: -50%; right: -20%; width: 500px; height: 500px;
-    background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
-    border-radius: 50%;
-  }}}}
-  .header::after {{{{
-    content: ''; position: absolute; bottom: -30%; left: -10%; width: 400px; height: 400px;
-    background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
-    border-radius: 50%;
-  }}}}
-  .header-content {{{{ max-width: 1400px; margin: 0 auto; position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }}}}
-  .header h1 {{{{ font-size: 1.75rem; font-weight: 800; letter-spacing: -0.02em; }}}}
-  .header .subtitle {{{{ font-size: 0.9rem; opacity: 0.85; margin-top: 4px; font-weight: 400; }}}}
-  .header .timestamp {{{{
-    background: rgba(255,255,255,0.15); backdrop-filter: blur(8px);
-    padding: 8px 16px; border-radius: 8px; font-size: 0.8rem; font-weight: 500;
-    border: 1px solid rgba(255,255,255,0.2);
-  }}}}
+    /* KPI Cards */
+    .kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }}
+    .kpi-card {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; }}
+    .kpi-card .value {{ font-size: 36px; font-weight: 700; }}
+    .kpi-card .label {{ font-size: 13px; color: #666; margin-top: 4px; }}
+    .kpi-blue .value {{ color: #0078D4; }}
+    .kpi-red .value {{ color: #D83B01; }}
+    .kpi-green .value {{ color: #107C10; }}
+    .kpi-orange .value {{ color: #FF8C00; }}
+    .kpi-purple .value {{ color: #8661C5; }}
 
-  /* ── Container ── */
-  .container {{{{ max-width: 1400px; margin: 0 auto; padding: 24px 20px; }}}}
+    /* Sections */
+    .section {{ background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
+    .section h2 {{ font-size: 18px; font-weight: 600; margin-bottom: 12px; color: #0078D4; border-bottom: 2px solid #0078D4; padding-bottom: 6px; }}
 
-  /* ── KPI Cards ── */
-  .kpi-grid {{{{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 28px; }}}}
-  @media (max-width: 1100px) {{{{ .kpi-grid {{{{ grid-template-columns: repeat(3, 1fr); }}}} }}}}
-  @media (max-width: 600px) {{{{ .kpi-grid {{{{ grid-template-columns: repeat(2, 1fr); }}}} }}}}
-  .kpi-card {{{{
-    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
-    padding: 20px; text-align: center; transition: transform 0.2s, box-shadow 0.2s;
-    border-top: 3px solid transparent; position: relative; overflow: hidden;
-  }}}}
-  .kpi-card:hover {{{{ transform: translateY(-2px); box-shadow: var(--shadow-hover); }}}}
-  .kpi-card .icon {{{{ font-size: 1.5rem; margin-bottom: 6px; }}}}
-  .kpi-card .value {{{{ font-size: 2.2rem; font-weight: 800; letter-spacing: -0.02em; }}}}
-  .kpi-card .label {{{{ font-size: 0.78rem; color: var(--gray); margin-top: 2px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }}}}
-  .kpi-blue {{{{ border-top-color: var(--blue); }}}} .kpi-blue .value {{{{ color: var(--blue); }}}}
-  .kpi-red {{{{ border-top-color: var(--red); }}}} .kpi-red .value {{{{ color: var(--red); }}}}
-  .kpi-green {{{{ border-top-color: var(--green); }}}} .kpi-green .value {{{{ color: var(--green); }}}}
-  .kpi-purple {{{{ border-top-color: var(--purple); }}}} .kpi-purple .value {{{{ color: var(--purple); }}}}
-  .kpi-orange {{{{ border-top-color: var(--orange); }}}} .kpi-orange .value {{{{ color: var(--orange); }}}}
+    /* Tables */
+    table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+    th {{ background: #f5f5f5; padding: 10px 8px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; position: sticky; top: 0; }}
+    td {{ padding: 8px; border-bottom: 1px solid #eee; }}
+    tr:hover {{ background: #f8f9fa; }}
+    .center {{ text-align: center; }}
+    .title-col {{ max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    a {{ color: #0078D4; text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
 
-  /* ── Cards ── */
-  .card {{{{
-    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
-    padding: 24px; margin-bottom: 24px;
-  }}}}
-  .card h2 {{{{
-    font-size: 1.05rem; font-weight: 700; color: #1F2937; margin-bottom: 16px;
-    display: flex; align-items: center; gap: 8px;
-  }}}}
-  .card h2 .icon {{{{ font-size: 1.2rem; }}}}
-  .card h2 .accent {{{{ width: 4px; height: 20px; background: var(--blue); border-radius: 2px; }}}}
+    /* Badges */
+    .badge {{ display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+    .badge-red {{ background: #FDE7E9; color: #D83B01; }}
+    .badge-green {{ background: #DFF6DD; color: #107C10; }}
+    .badge-blue {{ background: #E1F0FF; color: #0078D4; }}
+    .badge-yellow {{ background: #FFF4CE; color: #7A6400; }}
 
-  /* ── Charts ── */
-  .charts-grid {{{{ display: grid; grid-template-columns: 1.8fr 1fr; gap: 24px; margin-bottom: 24px; }}}}
-  @media (max-width: 900px) {{{{ .charts-grid {{{{ grid-template-columns: 1fr; }}}} }}}}
-  .chart-wrap canvas {{{{ max-height: 320px; }}}}
+    /* Labels */
+    .label-bug {{ background: #FDE7E9; color: #D83B01; padding: 2px 8px; border-radius: 4px; font-size: 11px; }}
+    .label-enhancement {{ background: #DFF6DD; color: #107C10; padding: 2px 8px; border-radius: 4px; font-size: 11px; }}
+    .label-other {{ background: #f0f0f0; color: #666; padding: 2px 8px; border-radius: 4px; font-size: 11px; }}
 
-  /* ── Tables ── */
-  .table-scroll {{{{ overflow-x: auto; }}}}
-  table {{{{ width: 100%; border-collapse: collapse; font-size: 0.85rem; }}}}
-  thead th {{{{
-    position: sticky; top: 0; background: #F9FAFB; text-align: left;
-    padding: 12px 10px; border-bottom: 2px solid #E5E7EB; font-weight: 600;
-    color: #4B5563; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;
-    white-space: nowrap;
-  }}}}
-  tbody td {{{{ padding: 10px; border-bottom: 1px solid #F3F4F6; vertical-align: middle; }}}}
-  tbody tr {{{{ transition: background 0.15s; }}}}
-  tbody tr:hover {{{{ background: #F0F7FF; }}}}
-  .title-col {{{{ max-width: 350px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}}}
-  a {{{{ color: var(--blue); text-decoration: none; font-weight: 500; }}}}
-  a:hover {{{{ text-decoration: underline; }}}}
+    /* Age colors */
+    .age-red {{ color: #D83B01; font-weight: 700; }}
+    .age-yellow {{ color: #FF8C00; font-weight: 600; }}
+    .age-green {{ color: #107C10; }}
 
-  /* ── Badges ── */
-  .badge {{{{ display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }}}}
-  .badge-blue {{{{ background: var(--blue-light); color: var(--blue); }}}}
-  .badge-red {{{{ background: var(--red-bg); color: var(--red); }}}}
-  .badge-green {{{{ background: var(--green-bg); color: var(--green); }}}}
-  .badge-orange {{{{ background: var(--orange-bg); color: var(--orange); }}}}
-  .badge-purple {{{{ background: var(--purple-bg); color: var(--purple); }}}}
-  .badge-gray {{{{ background: var(--gray-bg); color: var(--gray); }}}}
+    /* Bar chart */
+    .bar {{ background: linear-gradient(90deg, #0078D4, #40A9FF); height: 18px; border-radius: 4px; min-width: 4px; }}
 
-  /* ── Workload bar ── */
-  .bar-track {{{{ background: #E5E7EB; border-radius: 6px; overflow: hidden; height: 24px; }}}}
-  .bar-fill {{{{ height: 100%; border-radius: 6px; background: linear-gradient(90deg, #0078D4, #40A9FF); transition: width 0.6s ease; display: flex; align-items: center; padding-left: 8px; color: white; font-size: 0.75rem; font-weight: 600; min-width: 30px; }}}}
+    /* Chart container */
+    .chart-container {{ display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px; }}
+    .chart-canvas {{ max-height: 300px; }}
 
-  /* ── Search ── */
-  .search-box {{{{
-    display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
-    background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 8px 14px;
-  }}}}
-  .search-box input {{{{
-    border: none; background: transparent; outline: none; font-size: 0.9rem;
-    font-family: inherit; flex: 1; color: #1F2937;
-  }}}}
-  .search-box .icon {{{{ color: #9CA3AF; font-size: 1rem; }}}}
+    /* Responsive */
+    @media (max-width: 900px) {{
+        .chart-container {{ grid-template-columns: 1fr; }}
+        .kpi-grid {{ grid-template-columns: repeat(3, 1fr); }}
+    }}
 
-  /* ── Footer ── */
-  .footer {{{{ text-align: center; color: #9CA3AF; font-size: 0.78rem; padding: 32px 0 24px; }}}}
-  .footer a {{{{ color: var(--blue); }}}}
-
-  /* ── Animations ── */
-  @keyframes fadeInUp {{{{ from {{{{ opacity: 0; transform: translateY(16px); }}}} to {{{{ opacity: 1; transform: translateY(0); }}}} }}}}
-  .kpi-card, .card {{{{ animation: fadeInUp 0.4s ease both; }}}}
-  .kpi-card:nth-child(1) {{{{ animation-delay: 0.05s; }}}}
-  .kpi-card:nth-child(2) {{{{ animation-delay: 0.1s; }}}}
-  .kpi-card:nth-child(3) {{{{ animation-delay: 0.15s; }}}}
-  .kpi-card:nth-child(4) {{{{ animation-delay: 0.2s; }}}}
-  .kpi-card:nth-child(5) {{{{ animation-delay: 0.25s; }}}}
-  .kpi-card:nth-child(6) {{{{ animation-delay: 0.3s; }}}}
+    .footer {{ text-align: center; color: #999; font-size: 11px; padding: 16px; }}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body>
 
 <div class="header">
-  <div class="header-content">
-    <div>
-      <h1>\U0001f4ca GitHub Issue Tracker Dashboard</h1>
-      <div class="subtitle">CSA Solutioning \u2014 Tracking {repo_count} Repositories Across microsoft &amp; Azure-Samples</div>
-    </div>
-    <div class="timestamp">\U0001f552 {now_ist}</div>
-  </div>
+    <h1>GitHub Issue Tracker Dashboard</h1>
+    <div class="subtitle">CSA Solutioning \u2014 {len(repo_data)} Repositories | Generated: {generated_at}</div>
 </div>
 
 <div class="container">
 
-<!-- KPI Cards -->
-<div class="kpi-grid">
-  <div class="kpi-card kpi-blue">
-    <div class="icon">\U0001f4cb</div>
-    <div class="value">{agg["total_issues"]}</div>
-    <div class="label">Open Issues</div>
-  </div>
-  <div class="kpi-card kpi-red">
-    <div class="icon">\U0001f41b</div>
-    <div class="value">{agg["total_bugs"]}</div>
-    <div class="label">Bugs</div>
-  </div>
-  <div class="kpi-card kpi-green">
-    <div class="icon">\u2728</div>
-    <div class="value">{agg["total_enhancements"]}</div>
-    <div class="label">Enhancements</div>
-  </div>
-  <div class="kpi-card kpi-purple">
-    <div class="icon">\U0001f4e6</div>
-    <div class="value">{agg["total_other"]}</div>
-    <div class="label">Other</div>
-  </div>
-  <div class="kpi-card kpi-orange">
-    <div class="icon">\u26a0\ufe0f</div>
-    <div class="value">{agg["total_overdue"]}</div>
-    <div class="label">Overdue</div>
-  </div>
-  <div class="kpi-card kpi-blue">
-    <div class="icon">\U0001f4c1</div>
-    <div class="value">{repo_count}</div>
-    <div class="label">Repos</div>
-  </div>
-</div>
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+        <div class="kpi-card kpi-blue">
+            <div class="value">{total_open}</div>
+            <div class="label">Total Open Issues</div>
+        </div>
+        <div class="kpi-card kpi-red">
+            <div class="value">{total_bug}</div>
+            <div class="label">Bugs</div>
+        </div>
+        <div class="kpi-card kpi-green">
+            <div class="value">{total_enhancement}</div>
+            <div class="label">Enhancements</div>
+        </div>
+        <div class="kpi-card kpi-purple">
+            <div class="value">{total_other}</div>
+            <div class="label">Other / Unlabeled</div>
+        </div>
+        <div class="kpi-card kpi-orange">
+            <div class="value">{total_overdue}</div>
+            <div class="label">Overdue Follow-ups</div>
+        </div>
+        <div class="kpi-card kpi-blue">
+            <div class="value">{len(repo_data)}</div>
+            <div class="label">Repos Tracked</div>
+        </div>
+    </div>
 
-<!-- Charts -->
-<div class="charts-grid">
-  <div class="card chart-wrap">
-    <h2><div class="accent"></div> Issues by Repository</h2>
-    <canvas id="repoChart"></canvas>
-  </div>
-  <div class="card chart-wrap">
-    <h2><div class="accent"></div> Type Distribution</h2>
-    <canvas id="typeChart"></canvas>
-  </div>
-</div>
+    <!-- Charts -->
+    <div class="chart-container">
+        <div class="section">
+            <h2>Issues by Repository</h2>
+            <canvas id="repoChart" class="chart-canvas"></canvas>
+        </div>
+        <div class="section">
+            <h2>Issue Type Distribution</h2>
+            <canvas id="typeChart" class="chart-canvas"></canvas>
+        </div>
+    </div>
 
-<!-- Repo Summary -->
-<div class="card">
-  <h2><div class="accent"></div> Repository Summary</h2>
-  <div class="table-scroll">
-  <table>
-    <thead><tr>
-      <th>Accelerator</th><th style="text-align:center">Open</th><th style="text-align:center">Bugs</th>
-      <th style="text-align:center">Enh.</th><th style="text-align:center">Other</th>
-      <th style="text-align:center">Overdue</th><th style="text-align:center">Oldest</th>
-      <th>Primary Owner</th><th>Secondary Owner</th>
-    </tr></thead>
-    <tbody>{repo_rows}</tbody>
-  </table>
-  </div>
-</div>
+    <!-- Repo Summary Table -->
+    <div class="section">
+        <h2>Repository Summary</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Accelerator</th>
+                    <th class="center">Open</th>
+                    <th class="center">Bugs</th>
+                    <th class="center">Enhancements</th>
+                    <th class="center">Other</th>
+                    <th class="center">Overdue</th>
+                    <th class="center">Oldest</th>
+                    <th>Primary Owner</th>
+                    <th>Secondary Owner</th>
+                </tr>
+            </thead>
+            <tbody>{repo_rows}</tbody>
+        </table>
+    </div>
 
-<!-- Owner Workload -->
-<div class="card">
-  <h2><div class="accent"></div> Owner Workload</h2>
-  <table>
-    <thead><tr><th>Owner</th><th style="text-align:center;width:80px">Issues</th><th>Workload Distribution</th></tr></thead>
-    <tbody>{owner_rows}</tbody>
-  </table>
-</div>
+    <!-- Owner Workload -->
+    <div class="section">
+        <h2>Owner Workload (Open Issues by Primary Owner)</h2>
+        <table>
+            <thead>
+                <tr><th>Owner</th><th class="center">Issues</th><th>Distribution</th></tr>
+            </thead>
+            <tbody>{owner_rows}</tbody>
+        </table>
+    </div>
 
-<!-- All Open Issues -->
-<div class="card">
-  <h2><div class="accent"></div> All Open Issues <span style="font-weight:400;font-size:0.85rem;color:#9CA3AF;margin-left:8px">(Top 50 by Age)</span></h2>
-  <div class="search-box">
-    <span class="icon">\U0001f50d</span>
-    <input type="text" id="issueSearch" placeholder="Search issues by title, accelerator, or reporter..." onkeyup="filterIssues()">
-  </div>
-  <div class="table-scroll">
-  <table id="issueTable">
-    <thead><tr>
-      <th>Issue #</th><th>Accelerator</th><th>Title</th><th>Reported By</th><th>Labels</th><th style="text-align:center">Age</th>
-    </tr></thead>
-    <tbody>{issue_rows}</tbody>
-  </table>
-  </div>
-</div>
+    <!-- All Open Issues -->
+    <div class="section">
+        <h2>All Open Issues (Top 50 by Age)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Issue #</th>
+                    <th>Accelerator</th>
+                    <th>Title</th>
+                    <th>Reported By</th>
+                    <th>Labels</th>
+                    <th class="center">Age</th>
+                </tr>
+            </thead>
+            <tbody>{issue_rows}</tbody>
+        </table>
+    </div>
 
-</div><!-- /container -->
+</div>
 
 <div class="footer">
-  GitHub Issue Tracker Dashboard \u2022 Auto-generated on {now_ist} \u2022 CSA Solutioning<br>
-  <span style="font-size:0.7rem;color:#C0C0C0">Refreshes every 30 minutes via GitHub Actions \u2022 Powered by GitHub Pages</span>
+    GitHub Issue Tracker Dashboard | Auto-generated on {generated_at} | CSA Solutioning
 </div>
 
 <script>
-// ── Search/filter ──
-function filterIssues() {{{{
-  const q = document.getElementById('issueSearch').value.toLowerCase();
-  const rows = document.querySelectorAll('#issueTable tbody tr');
-  rows.forEach(r => {{{{ r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'; }}}});
-}}}}
+// Repo bar chart
+new Chart(document.getElementById('repoChart'), {{
+    type: 'bar',
+    data: {{
+        labels: {repo_names_js},
+        datasets: [
+            {{ label: 'Bugs', data: {bugs_js}, backgroundColor: '#D83B01' }},
+            {{ label: 'Enhancements', data: {enhancements_js}, backgroundColor: '#107C10' }},
+            {{ label: 'Other', data: {others_js}, backgroundColor: '#0078D4' }}
+        ]
+    }},
+    options: {{
+        responsive: true,
+        plugins: {{ legend: {{ position: 'bottom' }} }},
+        scales: {{
+            x: {{ ticks: {{ maxRotation: 45, font: {{ size: 10 }} }} }},
+            y: {{ beginAtZero: true, ticks: {{ stepSize: 1 }} }}
+        }}
+    }}
+}});
 
-// ── Charts ──
-Chart.defaults.font.family = "'Inter', 'Segoe UI', sans-serif";
-Chart.defaults.font.size = 12;
-
-new Chart(document.getElementById('repoChart'), {{{{
-  type: 'bar',
-  data: {{{{
-    labels: {repo_names_js},
-    datasets: [
-      {{{{ label: 'Bugs', data: {bugs_js}, backgroundColor: 'rgba(216,59,1,0.85)', borderRadius: 4 }}}},
-      {{{{ label: 'Enhancements', data: {enh_js}, backgroundColor: 'rgba(16,124,16,0.85)', borderRadius: 4 }}}},
-      {{{{ label: 'Other', data: {other_js}, backgroundColor: 'rgba(107,114,128,0.6)', borderRadius: 4 }}}}
-    ]
-  }}}},
-  options: {{{{
-    responsive: true, maintainAspectRatio: true,
-    plugins: {{{{ legend: {{{{ position: 'top', labels: {{{{ usePointStyle: true, padding: 16 }}}} }}}} }}}},
-    scales: {{{{
-      x: {{{{ stacked: true, ticks: {{{{ maxRotation: 40, minRotation: 20, font: {{{{ size: 11 }}}} }}}}, grid: {{{{ display: false }}}} }}}},
-      y: {{{{ stacked: true, beginAtZero: true, ticks: {{{{ stepSize: 1 }}}}, grid: {{{{ color: '#F3F4F6' }}}} }}}}
-    }}}}
-  }}}}
-}}}});
-
-new Chart(document.getElementById('typeChart'), {{{{
-  type: 'doughnut',
-  data: {{{{
-    labels: ['Bugs', 'Enhancements', 'Other'],
-    datasets: [{{{{
-      data: [{agg["total_bugs"]}, {agg["total_enhancements"]}, {agg["total_other"]}],
-      backgroundColor: ['#D83B01', '#107C10', '#6B7280'],
-      borderWidth: 0, hoverOffset: 8
-    }}}}]
-  }}}},
-  options: {{{{
-    responsive: true, maintainAspectRatio: true,
-    cutout: '65%',
-    plugins: {{{{
-      legend: {{{{ position: 'bottom', labels: {{{{ usePointStyle: true, padding: 16 }}}} }}}}
-    }}}}
-  }}}}
-}}}});
+// Type donut chart
+new Chart(document.getElementById('typeChart'), {{
+    type: 'doughnut',
+    data: {{
+        labels: ['Bugs', 'Enhancements', 'Other'],
+        datasets: [{{
+            data: [{total_bug}, {total_enhancement}, {total_other}],
+            backgroundColor: ['#D83B01', '#107C10', '#0078D4']
+        }}]
+    }},
+    options: {{
+        responsive: true,
+        plugins: {{ legend: {{ position: 'bottom' }} }}
+    }}
+}});
 </script>
+
 </body>
 </html>"""
-    return html
-
-# ─── main ─────────────────────────────────────────────────────────────────────
-
-def main():
-    print("=" * 60)
-    print("  GitHub Issue Tracker – Dashboard Generator")
-    print("=" * 60)
-
-    # load state
-    print(f"\n📂 Loading state file: {STATE_FILE}")
-    state = load_state()
-
-    # fetch issues from every repo
-    repos_data: list[dict] = []
-    for idx, cfg in enumerate(REPOS, 1):
-        print(f"\n[{idx}/{len(REPOS)}] Fetching {cfg['owner']}/{cfg['repo']}…", end=" ", flush=True)
-        issues = fetch_open_issues(cfg["owner"], cfg["repo"])
-        print(f"→ {len(issues)} open issues")
-        repos_data.append({"config": cfg, "issues": issues})
-
-    # aggregate
-    print("\n📊 Aggregating data…")
-    agg = aggregate(repos_data, state)
-
-    # generate HTML
-    print("🖌  Generating HTML dashboard…")
-    html = generate_html(agg)
-
-    out_path = OUTPUT_HTML
-    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as fh:
-        fh.write(html)
-
-    size_kb = os.path.getsize(out_path) / 1024
-    print(f"\n✅ Dashboard written to {out_path} ({size_kb:.1f} KB)")
-    print(f"   Total issues: {agg['total_issues']}  |  Bugs: {agg['total_bugs']}  |  Enhancements: {agg['total_enhancements']}  |  Overdue: {agg['total_overdue']}")
-    now_ist = datetime.now(IST).strftime("%d %b %Y, %I:%M %p IST")
-    print(f"   Generated at: {now_ist}")
 
 
 if __name__ == "__main__":
-    main()
+    generate_dashboard()
