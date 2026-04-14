@@ -1,0 +1,78 @@
+name: GitHub Issue Tracker
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: issue-tracker
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  track-issues:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tracker/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -q -r tracker/requirements.txt
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get ADO Bearer Token
+        id: ado_token
+        run: |
+          TOKEN=$(az account get-access-token \
+            --resource "499b84ac-1321-427f-aa17-267ca6975798" \
+            --query "accessToken" -o tsv)
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Run Issue Tracker
+        working-directory: tracker
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_ADO_TOKEN: ${{ steps.ado_token.outputs.token }}
+          ADO_ORG: CSACTOSOL
+          ADO_PROJECT: CSA Solutioning
+          ADO_AREA_PATH: "CSA Solutioning\\Engineering - Tech Debt - Maintenance"
+          ADO_PARENT_US_ID: "36885"
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
+          SENDER_EMAIL: ${{ vars.SENDER_EMAIL }}
+          CC_EMAILS: ${{ vars.CC_EMAILS }}
+          TEAMS_CHAT_ID: ${{ vars.TEAMS_CHAT_ID }}
+          STATE_FILE: ${{ github.workspace }}/tracker/state/tracked_issues_state.json
+        run: python run_tracker.py
+
+      - name: Commit state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main || true
+          git add tracker/state/tracked_issues_state.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update tracker state [skip ci]"
+            git push
+          fi
